@@ -41,11 +41,12 @@
           <textarea
             v-model="relayContent"
             class="relay-textarea"
-            placeholder="写下你的共鸣，加入接力..."
-            maxlength="200"
+            placeholder="写下你的共鸣，加入接力（一句话，50字以内）..."
+            maxlength="50"
+            @keydown.enter.exact.prevent="submitRelay"
           ></textarea>
           <div class="relay-input-footer">
-            <span class="char-count">{{ relayContent.length }}/200</span>
+            <span class="char-count">{{ relayContent.length }}/50</span>
             <button
               class="btn btn-primary relay-submit-btn"
               :disabled="!relayContent.trim() || submittingRelay"
@@ -96,7 +97,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -104,6 +105,7 @@ const loading = ref(true)
 const hasSecret = ref(false)
 const secret = ref(null)
 const message = ref('')
+const currentSecretId = ref(null)
 
 const relayContent = ref('')
 const relays = ref([])
@@ -119,38 +121,54 @@ async function fetchRandomSecret() {
     hasSecret.value = data.hasSecret
     secret.value = data.secret
     message.value = data.message
+
+    relayContent.value = ''
+    relaySubmitError.value = ''
+    relays.value = []
+    loadingRelays.value = false
+
     if (data.hasSecret) {
-      relayContent.value = ''
-      relaySubmitError.value = ''
+      currentSecretId.value = data.secret.id
       fetchRelays(data.secret.id)
+    } else {
+      currentSecretId.value = null
     }
   } catch (error) {
     console.error('获取秘密失败:', error)
     hasSecret.value = false
     message.value = '暂时无法连接到服务器'
+    relays.value = []
+    currentSecretId.value = null
   } finally {
     loading.value = false
   }
 }
 
 async function fetchRelays(secretId) {
+  if (secretId !== currentSecretId.value) return
+
   loadingRelays.value = true
   try {
     const response = await fetch(`/api/relays/${secretId}`)
     const data = await response.json()
-    if (data.success) {
+    if (data.success && secretId === currentSecretId.value) {
       relays.value = data.relays
     }
   } catch (error) {
     console.error('获取接力失败:', error)
-    relays.value = []
+    if (secretId === currentSecretId.value) {
+      relays.value = []
+    }
   } finally {
-    loadingRelays.value = false
+    if (secretId === currentSecretId.value) {
+      loadingRelays.value = false
+    }
   }
 }
 
 async function submitRelay() {
   if (!relayContent.value.trim() || !secret.value) return
+  if (secret.value.id !== currentSecretId.value) return
 
   submittingRelay.value = true
   relaySubmitError.value = ''
@@ -171,7 +189,9 @@ async function submitRelay() {
 
     if (data.success) {
       relayContent.value = ''
-      fetchRelays(secret.value.id)
+      if (secret.value.id === currentSecretId.value) {
+        fetchRelays(secret.value.id)
+      }
     } else {
       relaySubmitError.value = data.error || '提交失败，请重试'
     }
@@ -342,9 +362,13 @@ onMounted(() => {
 }
 
 .relay-section {
-  margin-top: 30px;
-  padding-top: 25px;
-  border-top: 1px solid #f0f0f0;
+  margin-top: 20px;
+  padding: 20px;
+  padding-top: 20px;
+  border: 1px solid #e8e8e8;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #fafbff 0%, #fff5f8 100%);
+  box-sizing: border-box;
 }
 
 .relay-header {
@@ -482,11 +506,15 @@ onMounted(() => {
   gap: 12px;
   padding: 15px;
   background: #fff;
-  border-radius: 10px;
+  border-radius: 12px;
   margin-bottom: 12px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid #e8e8e8;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   animation: slideInLeft 0.4s ease forwards;
   opacity: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 @keyframes slideInLeft {
@@ -517,14 +545,19 @@ onMounted(() => {
 .relay-content {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .relay-content .relay-text {
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.7;
   color: #333;
   margin: 0 0 8px 0;
   font-style: italic;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
 }
 
 .relay-time {

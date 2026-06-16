@@ -107,6 +107,8 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+const MAX_RELAY_LENGTH = 50;
+
 app.post('/api/relays', (req, res) => {
   try {
     const { secretId, content } = req.body;
@@ -119,6 +121,22 @@ app.post('/api/relays', (req, res) => {
       return res.status(400).json({ error: '接力内容不能为空', code: 4004 });
     }
 
+    const trimmedContent = content.trim();
+
+    if (trimmedContent.length > MAX_RELAY_LENGTH) {
+      return res.status(400).json({ error: `接力内容不能超过${MAX_RELAY_LENGTH}字`, code: 4006 });
+    }
+
+    if (/\n|\r/.test(trimmedContent)) {
+      return res.status(400).json({ error: '接力内容不能包含换行，请写成一句话', code: 4007 });
+    }
+
+    const sentencePattern = /[。！？.!?]/g;
+    const sentenceMatches = trimmedContent.match(sentencePattern);
+    if (sentenceMatches && sentenceMatches.length > 1) {
+      return res.status(400).json({ error: '接力只能写一句话，不能用多句', code: 4008 });
+    }
+
     const secrets = readSecrets();
     const secret = secrets.find(s => s.id === secretId && s.status === '已宽恕');
     if (!secret) {
@@ -129,7 +147,7 @@ app.post('/api/relays', (req, res) => {
     const newRelay = {
       id: uuidv4(),
       secretId: secretId.trim(),
-      content: content.trim(),
+      content: trimmedContent,
       hidden: false,
       createdAt: new Date().toISOString()
     };
