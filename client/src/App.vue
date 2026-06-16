@@ -9,6 +9,9 @@
         <router-link to="/confess" class="nav-link" :class="{ active: $route.path === '/confess' }">
           倾诉秘密
         </router-link>
+        <router-link to="/admin" class="nav-link" :class="{ active: $route.path === '/admin' }">
+          管理
+        </router-link>
       </nav>
     </header>
     <main class="main">

@@ -31,6 +31,61 @@
         </div>
       </transition>
 
+      <div v-if="hasSecret" class="relay-section">
+        <div class="relay-header">
+          <span class="relay-icon">🤝</span>
+          <h3>共鸣接力 ({{ relays.length }})</h3>
+        </div>
+
+        <div class="relay-input-area">
+          <textarea
+            v-model="relayContent"
+            class="relay-textarea"
+            placeholder="写下你的共鸣，加入接力..."
+            maxlength="200"
+          ></textarea>
+          <div class="relay-input-footer">
+            <span class="char-count">{{ relayContent.length }}/200</span>
+            <button
+              class="btn btn-primary relay-submit-btn"
+              :disabled="!relayContent.trim() || submittingRelay"
+              @click="submitRelay"
+            >
+              {{ submittingRelay ? '提交中...' : '传递共鸣' }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="relaySubmitError" class="error-message">
+          {{ relaySubmitError }}
+        </div>
+
+        <div v-if="loadingRelays" class="relay-loading">
+          <div class="mini-spinner"></div>
+          <span>加载接力中...</span>
+        </div>
+
+        <div v-else-if="relays.length === 0" class="relay-empty">
+          <span class="empty-icon">✨</span>
+          <p>成为第一个留下共鸣的人吧</p>
+        </div>
+
+        <div v-else class="relay-list">
+          <div
+            v-for="(relay, index) in relays"
+            :key="relay.id"
+            class="relay-item"
+            :style="{ animationDelay: `${index * 0.05}s` }"
+          >
+            <div class="relay-avatar">{{ (index + 1) % 10 }}</div>
+            <div class="relay-content">
+              <p class="relay-text">"{{ relay.content }}"</p>
+              <span class="relay-time">{{ formatTime(relay.createdAt) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="card-actions">
         <button class="btn btn-primary" @click="goToConfess">
           我也想倾诉
@@ -41,7 +96,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -49,6 +104,12 @@ const loading = ref(true)
 const hasSecret = ref(false)
 const secret = ref(null)
 const message = ref('')
+
+const relayContent = ref('')
+const relays = ref([])
+const loadingRelays = ref(false)
+const submittingRelay = ref(false)
+const relaySubmitError = ref('')
 
 async function fetchRandomSecret() {
   loading.value = true
@@ -58,6 +119,11 @@ async function fetchRandomSecret() {
     hasSecret.value = data.hasSecret
     secret.value = data.secret
     message.value = data.message
+    if (data.hasSecret) {
+      relayContent.value = ''
+      relaySubmitError.value = ''
+      fetchRelays(data.secret.id)
+    }
   } catch (error) {
     console.error('获取秘密失败:', error)
     hasSecret.value = false
@@ -65,6 +131,74 @@ async function fetchRandomSecret() {
   } finally {
     loading.value = false
   }
+}
+
+async function fetchRelays(secretId) {
+  loadingRelays.value = true
+  try {
+    const response = await fetch(`/api/relays/${secretId}`)
+    const data = await response.json()
+    if (data.success) {
+      relays.value = data.relays
+    }
+  } catch (error) {
+    console.error('获取接力失败:', error)
+    relays.value = []
+  } finally {
+    loadingRelays.value = false
+  }
+}
+
+async function submitRelay() {
+  if (!relayContent.value.trim() || !secret.value) return
+
+  submittingRelay.value = true
+  relaySubmitError.value = ''
+
+  try {
+    const response = await fetch('/api/relays', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        secretId: secret.value.id,
+        content: relayContent.value.trim()
+      })
+    })
+
+    const data = await response.json()
+
+    if (data.success) {
+      relayContent.value = ''
+      fetchRelays(secret.value.id)
+    } else {
+      relaySubmitError.value = data.error || '提交失败，请重试'
+    }
+  } catch (error) {
+    console.error('提交接力失败:', error)
+    relaySubmitError.value = '网络错误，请稍后重试'
+  } finally {
+    submittingRelay.value = false
+  }
+}
+
+function formatTime(dateString) {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diff = now - date
+
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`
+
+  return date.toLocaleDateString('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 function goToConfess() {
@@ -205,5 +339,196 @@ onMounted(() => {
   text-align: center;
   padding-top: 30px;
   border-top: 1px solid #eee;
+}
+
+.relay-section {
+  margin-top: 30px;
+  padding-top: 25px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.relay-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.relay-icon {
+  font-size: 24px;
+}
+
+.relay-header h3 {
+  font-size: 18px;
+  color: #333;
+  margin: 0;
+  font-weight: 600;
+}
+
+.relay-input-area {
+  background: #fafafa;
+  border-radius: 12px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.relay-textarea {
+  width: 100%;
+  min-height: 80px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 14px;
+  resize: vertical;
+  font-family: inherit;
+  transition: border-color 0.3s ease;
+  box-sizing: border-box;
+}
+
+.relay-textarea:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.relay-input-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.char-count {
+  font-size: 12px;
+  color: #999;
+}
+
+.relay-submit-btn {
+  padding: 8px 24px;
+  font-size: 14px;
+}
+
+.relay-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error-message {
+  background: #ffe6e6;
+  color: #d32f2f;
+  padding: 10px 15px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 15px;
+}
+
+.relay-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 30px;
+  color: #666;
+  font-size: 14px;
+}
+
+.mini-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(102, 126, 234, 0.3);
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.relay-empty {
+  text-align: center;
+  padding: 30px 20px;
+  color: #999;
+}
+
+.relay-empty .empty-icon {
+  font-size: 36px;
+  display: block;
+  margin-bottom: 10px;
+}
+
+.relay-empty p {
+  font-size: 14px;
+  margin: 0;
+}
+
+.relay-list {
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+.relay-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.relay-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.relay-list::-webkit-scrollbar-thumb {
+  background: #ddd;
+  border-radius: 3px;
+}
+
+.relay-item {
+  display: flex;
+  gap: 12px;
+  padding: 15px;
+  background: #fff;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  border: 1px solid #f0f0f0;
+  animation: slideInLeft 0.4s ease forwards;
+  opacity: 0;
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.relay-avatar {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.relay-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.relay-content .relay-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #333;
+  margin: 0 0 8px 0;
+  font-style: italic;
+}
+
+.relay-time {
+  font-size: 12px;
+  color: #999;
 }
 </style>
